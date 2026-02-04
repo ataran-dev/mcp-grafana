@@ -42,7 +42,7 @@ type disabledTools struct {
 	prometheus, loki, alerting,
 	dashboard, folder, oncall, asserts, sift, admin,
 	pyroscope, navigation, proxied, annotations, rendering, write,
-	clickhouse bool
+	clickhouse, cloudwatch bool
 }
 
 // Configuration for the Grafana client.
@@ -78,6 +78,7 @@ func (dt *disabledTools) addFlags() {
 	flag.BoolVar(&dt.annotations, "disable-annotations", false, "Disable annotation tools")
 	flag.BoolVar(&dt.rendering, "disable-rendering", false, "Disable rendering tools (panel/dashboard image export)")
 	flag.BoolVar(&dt.clickhouse, "disable-clickhouse", false, "Disable ClickHouse tools")
+	flag.BoolVar(&dt.cloudwatch, "disable-cloudwatch", false, "Disable CloudWatch tools")
 }
 
 func (gc *grafanaConfig) addFlags() {
@@ -110,6 +111,7 @@ func (dt *disabledTools) addTools(s *server.MCPServer) {
 	maybeAddTools(s, func(mcp *server.MCPServer) { tools.AddAnnotationTools(mcp, enableWriteTools) }, enabledTools, dt.annotations, "annotations")
 	maybeAddTools(s, tools.AddRenderingTools, enabledTools, dt.rendering, "rendering")
 	maybeAddTools(s, tools.AddClickHouseTools, enabledTools, dt.clickhouse, "clickhouse")
+	maybeAddTools(s, tools.AddCloudWatchTools, enabledTools, dt.cloudwatch, "cloudwatch")
 }
 
 func newServer(transport string, dt disabledTools) (*server.MCPServer, *mcpgrafana.ToolManager) {
