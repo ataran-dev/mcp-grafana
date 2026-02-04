@@ -239,10 +239,10 @@ func extractPanelQueries(panel map[string]interface{}, dashboardVars map[string]
 		effectiveVars := buildEffectiveVariables(dashboardVars, overrides)
 
 		// Substitute variables in query
-		processedQuery := substituteVariables(rawQuery, effectiveVars)
+		processedQuery := substituteGrafanaVariables(rawQuery, effectiveVars)
 
 		// Also substitute variables in datasource UID if it's a variable reference
-		dsUID = substituteVariables(dsUID, effectiveVars)
+		dsUID = substituteGrafanaVariables(dsUID, effectiveVars)
 
 		queries = append(queries, PanelQueryInfo{
 			RefID:             refID,
@@ -345,8 +345,9 @@ func buildEffectiveVariables(dashboardVars map[string]VariableInfo, overrides ma
 	return effective
 }
 
-// substituteVariables replaces template variables in a query with their values
-func substituteVariables(query string, variables map[string]string) string {
+// substituteGrafanaVariables replaces template variables in a query with their values
+// Supports ${varname:option}, ${varname}, $varname, and [[varname]] patterns
+func substituteGrafanaVariables(query string, variables map[string]string) string {
 	result := query
 
 	// Replace ${varname:option} and ${varname} patterns

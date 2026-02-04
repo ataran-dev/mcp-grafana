@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindPanelByID(t *testing.T) {
+func TestFindPanelByIDForRunPanelQuery(t *testing.T) {
 	tests := []struct {
 		name      string
 		dashboard map[string]interface{}
@@ -366,7 +366,7 @@ func TestExtractTemplateVariables(t *testing.T) {
 	}
 }
 
-func TestSubstituteVariables(t *testing.T) {
+func TestSubstituteVariablesForRunPanelQuery(t *testing.T) {
 	tests := []struct {
 		name      string
 		query     string

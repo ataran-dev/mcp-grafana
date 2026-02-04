@@ -211,7 +211,7 @@ func TestExtractQueryExpression(t *testing.T) {
 	}
 }
 
-func TestSubstituteVariables(t *testing.T) {
+func TestSubstituteGrafanaVariables(t *testing.T) {
 	variables := map[string]string{
 		"job":         "api-server",
 		"instance":    "localhost:9090",
@@ -267,7 +267,7 @@ func TestSubstituteVariables(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := substituteVariables(tt.query, variables)
+			result := substituteGrafanaVariables(tt.query, variables)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

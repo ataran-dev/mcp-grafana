@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	mcpgrafana "github.com/grafana/mcp-grafana"
@@ -147,45 +146,6 @@ func runPanelQuery(ctx context.Context, args RunPanelQueryParams) (*RunPanelQuer
 	}, nil
 }
 
-// findPanelByID searches for a panel by ID, including nested panels in rows
-func findPanelByID(db map[string]interface{}, panelID int) (map[string]interface{}, error) {
-	panels, ok := db["panels"].([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("dashboard has no panels")
-	}
-
-	// Search top-level panels
-	for _, p := range panels {
-		panel, ok := p.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// Check if this panel matches
-		id := safeInt(panel, "id")
-		if id == panelID {
-			return panel, nil
-		}
-
-		// Check nested panels (for row panels)
-		panelType := safeString(panel, "type")
-		if panelType == "row" {
-			nestedPanels := safeArray(panel, "panels")
-			for _, np := range nestedPanels {
-				nestedPanel, ok := np.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				nestedID := safeInt(nestedPanel, "id")
-				if nestedID == panelID {
-					return nestedPanel, nil
-				}
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("panel with ID %d not found", panelID)
-}
 
 // extractPanelInfo extracts query and datasource information from a panel
 func extractPanelInfo(panel map[string]interface{}) (*panelInfo, error) {
@@ -288,22 +248,6 @@ func extractTemplateVariables(db map[string]interface{}) map[string]string {
 	return variables
 }
 
-// substituteVariables replaces $varname and ${varname} patterns with actual values
-func substituteVariables(query string, variables map[string]string) string {
-	result := query
-
-	for name, value := range variables {
-		// Replace ${varname} pattern
-		result = strings.ReplaceAll(result, "${"+name+"}", value)
-		// Replace $varname pattern (word boundary aware)
-		// Use regex to avoid partial matches like $jobname when we want $job
-		pattern := regexp.MustCompile(`\$` + regexp.QuoteMeta(name) + `\b`)
-		result = pattern.ReplaceAllString(result, value)
-	}
-
-	return result
-}
-
 // executePrometheusQuery runs a Prometheus query using the existing queryPrometheus function
 func executePrometheusQuery(ctx context.Context, datasourceUID, query, start, end string) (model.Value, error) {
 	return queryPrometheus(ctx, QueryPrometheusParams{
@@ -328,7 +272,7 @@ func executeLokiQuery(ctx context.Context, datasourceUID, query, start, end stri
 		return nil, fmt.Errorf("parsing end time: %w", err)
 	}
 
-	return queryLokiLogs(ctx, QueryLokiLogsParams{
+	result, err := queryLokiLogs(ctx, QueryLokiLogsParams{
 		DatasourceUID: datasourceUID,
 		LogQL:         query,
 		StartRFC3339:  startTime.Format("2006-01-02T15:04:05Z07:00"),
@@ -337,6 +281,10 @@ func executeLokiQuery(ctx context.Context, datasourceUID, query, start, end stri
 		Direction:     "backward",
 		QueryType:     "range",
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
 }
 
 // RunPanelQuery is the tool definition for running a panel's query
