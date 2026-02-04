@@ -42,7 +42,8 @@ type disabledTools struct {
 	prometheus, loki, alerting,
 	dashboard, folder, oncall, asserts, sift, admin,
 	pyroscope, navigation, proxied, annotations, rendering, write,
-	clickhouse, cloudwatch bool
+	clickhouse, cloudwatch,
+	examples, searchlogs, runpanelquery bool
 }
 
 // Configuration for the Grafana client.
@@ -79,6 +80,9 @@ func (dt *disabledTools) addFlags() {
 	flag.BoolVar(&dt.rendering, "disable-rendering", false, "Disable rendering tools (panel/dashboard image export)")
 	flag.BoolVar(&dt.clickhouse, "disable-clickhouse", false, "Disable ClickHouse tools")
 	flag.BoolVar(&dt.cloudwatch, "disable-cloudwatch", false, "Disable CloudWatch tools")
+	flag.BoolVar(&dt.examples, "disable-examples", false, "Disable query examples tools")
+	flag.BoolVar(&dt.searchlogs, "disable-searchlogs", false, "Disable search logs tools")
+	flag.BoolVar(&dt.runpanelquery, "disable-runpanelquery", false, "Disable run panel query tools")
 }
 
 func (gc *grafanaConfig) addFlags() {
@@ -112,6 +116,9 @@ func (dt *disabledTools) addTools(s *server.MCPServer) {
 	maybeAddTools(s, tools.AddRenderingTools, enabledTools, dt.rendering, "rendering")
 	maybeAddTools(s, tools.AddClickHouseTools, enabledTools, dt.clickhouse, "clickhouse")
 	maybeAddTools(s, tools.AddCloudWatchTools, enabledTools, dt.cloudwatch, "cloudwatch")
+	maybeAddTools(s, tools.AddExamplesTools, enabledTools, dt.examples, "examples")
+	maybeAddTools(s, tools.AddSearchLogsTools, enabledTools, dt.searchlogs, "searchlogs")
+	maybeAddTools(s, tools.AddRunPanelQueryTools, enabledTools, dt.runpanelquery, "runpanelquery")
 }
 
 func newServer(transport string, dt disabledTools) (*server.MCPServer, *mcpgrafana.ToolManager) {
