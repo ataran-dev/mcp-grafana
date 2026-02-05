@@ -27,6 +27,7 @@ const (
 type SearchLogsParams struct {
 	DatasourceUID string `json:"datasourceUid" jsonschema:"required,description=The UID of a ClickHouse or Loki datasource"`
 	Pattern       string `json:"pattern" jsonschema:"required,description=Text pattern or regex to search for in log messages"`
+	Table         string `json:"table,omitempty" jsonschema:"description=Table name for ClickHouse queries (default: 'otel_logs'). Use list_clickhouse_tables to discover available tables. Ignored for Loki."`
 	Start         string `json:"start,omitempty" jsonschema:"description=Start time (e.g. 'now-1h'\\, '2026-02-02T19:00:00Z'\\, Unix ms). Defaults to 'now-1h'"`
 	End           string `json:"end,omitempty" jsonschema:"description=End time (e.g. 'now'\\, RFC3339\\, Unix ms). Defaults to 'now'"`
 	Limit         int    `json:"limit,omitempty" jsonschema:"default=100,description=Maximum number of log entries to return (max 1000)"`
@@ -89,6 +90,16 @@ func escapeClickHousePattern(pattern string) string {
 	return pattern
 }
 
+// isTableNotFoundError checks if the error is related to a missing ClickHouse table
+func isTableNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "unknown table") ||
+		(strings.Contains(errStr, "table") && strings.Contains(errStr, "doesn't exist"))
+}
+
 // generateLokiQuery generates a LogQL query for the given pattern
 func generateLokiQuery(pattern string) string {
 	if isRegexPattern(pattern) {
@@ -100,13 +111,25 @@ func generateLokiQuery(pattern string) string {
 }
 
 // generateClickHouseLogQuery generates a SQL query for searching logs in ClickHouse
-// This function assumes OpenTelemetry log table structure (otel_logs)
-func generateClickHouseLogQuery(pattern string, limit int) string {
-	escapedPattern := escapeClickHousePattern(pattern)
-	// Use ILIKE for case-insensitive matching
+// This function assumes OpenTelemetry log table structure by default
+// When useRegex is true, uses ClickHouse match() function for regex patterns
+func generateClickHouseLogQuery(table, pattern string, limit int, useRegex bool) string {
+	if table == "" {
+		table = "otel_logs"
+	}
+	var whereClause string
+	if useRegex {
+		// Use ClickHouse's match() function for regex - escape single quotes for SQL
+		escapedPattern := strings.ReplaceAll(pattern, `'`, `''`)
+		whereClause = fmt.Sprintf("match(Body, '%s')", escapedPattern)
+	} else {
+		// Use ILIKE for case-insensitive substring matching
+		escapedPattern := escapeClickHousePattern(pattern)
+		whereClause = fmt.Sprintf("Body ILIKE '%%%s%%'", escapedPattern)
+	}
 	return fmt.Sprintf(
-		`SELECT Timestamp, Body, ServiceName, SeverityText, ResourceAttributes, LogAttributes FROM otel_logs WHERE Body ILIKE '%%%s%%' AND $__timeFilter(Timestamp) ORDER BY Timestamp DESC LIMIT %d`,
-		escapedPattern, limit,
+		`SELECT Timestamp, Body, ServiceName, SeverityText, ResourceAttributes, LogAttributes FROM %s WHERE %s AND $__timeFilter(Timestamp) ORDER BY Timestamp DESC LIMIT %d`,
+		table, whereClause, limit,
 	)
 }
 
@@ -145,8 +168,8 @@ func searchLogsInLoki(ctx context.Context, args SearchLogsParams, limit int, sta
 	}
 
 	// Convert Loki entries to normalized LogResult format
-	logs := make([]LogResult, 0, len(entries))
-	for _, entry := range entries {
+	logs := make([]LogResult, 0, len(entries.Data))
+	for _, entry := range entries.Data {
 		logs = append(logs, LogResult{
 			Timestamp: entry.Timestamp,
 			Message:   entry.Line,
@@ -171,7 +194,9 @@ func searchLogsInLoki(ctx context.Context, args SearchLogsParams, limit int, sta
 
 // searchLogsInClickHouse searches logs in a ClickHouse datasource
 func searchLogsInClickHouse(ctx context.Context, args SearchLogsParams, limit int) (*SearchLogsResult, error) {
-	query := generateClickHouseLogQuery(args.Pattern, limit)
+	// Detect if pattern contains regex metacharacters
+	useRegex := isRegexPattern(args.Pattern)
+	query := generateClickHouseLogQuery(args.Table, args.Pattern, limit, useRegex)
 
 	// Query ClickHouse using existing infrastructure
 	chResult, err := queryClickHouse(ctx, ClickHouseQueryParams{
@@ -182,6 +207,9 @@ func searchLogsInClickHouse(ctx context.Context, args SearchLogsParams, limit in
 		Limit:         limit,
 	})
 	if err != nil {
+		if isTableNotFoundError(err) {
+			return nil, fmt.Errorf("querying ClickHouse: %w. Hint: Use list_clickhouse_tables to discover available tables in your ClickHouse instance", err)
+		}
 		return nil, fmt.Errorf("querying ClickHouse: %w", err)
 	}
 

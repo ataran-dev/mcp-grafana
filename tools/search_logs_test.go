@@ -3,6 +3,7 @@
 package tools
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -263,12 +264,14 @@ func TestGenerateClickHouseLogQuery(t *testing.T) {
 		name     string
 		pattern  string
 		limit    int
+		useRegex bool
 		contains []string // Substrings that must be present
 	}{
 		{
-			name:    "simple text query",
-			pattern: "error",
-			limit:   100,
+			name:     "simple text query",
+			pattern:  "error",
+			limit:    100,
+			useRegex: false,
 			contains: []string{
 				"SELECT",
 				"Timestamp",
@@ -281,27 +284,50 @@ func TestGenerateClickHouseLogQuery(t *testing.T) {
 			},
 		},
 		{
-			name:    "pattern with special SQL chars",
-			pattern: "it's an error",
-			limit:   50,
+			name:     "pattern with special SQL chars",
+			pattern:  "it's an error",
+			limit:    50,
+			useRegex: false,
 			contains: []string{
 				"ILIKE '%it''s an error%'",
 				"LIMIT 50",
 			},
 		},
 		{
-			name:    "pattern with ILIKE special chars",
-			pattern: "100% done",
-			limit:   100,
+			name:     "pattern with ILIKE special chars",
+			pattern:  "100% done",
+			limit:    100,
+			useRegex: false,
 			contains: []string{
 				`ILIKE '%100\% done%'`,
+			},
+		},
+		{
+			name:     "regex pattern with match()",
+			pattern:  "timeout|connection.*refused",
+			limit:    100,
+			useRegex: true,
+			contains: []string{
+				"match(Body, 'timeout|connection.*refused')",
+				"$__timeFilter(Timestamp)",
+				"LIMIT 100",
+			},
+		},
+		{
+			name:     "regex pattern with single quotes",
+			pattern:  "it's.*error",
+			limit:    50,
+			useRegex: true,
+			contains: []string{
+				"match(Body, 'it''s.*error')",
+				"LIMIT 50",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := generateClickHouseLogQuery(tt.pattern, tt.limit)
+			result := generateClickHouseLogQuery("", tt.pattern, tt.limit, tt.useRegex) // empty table = default otel_logs
 			for _, substr := range tt.contains {
 				assert.Contains(t, result, substr)
 			}
@@ -450,4 +476,55 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, 100, DefaultSearchLogsLimit)
 	assert.Equal(t, 1000, MaxSearchLogsLimit)
 	assert.Equal(t, "loki", LokiDatasourceType)
+}
+
+func TestIsTableNotFoundError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "generic error",
+			err:      fmt.Errorf("connection refused"),
+			expected: false,
+		},
+		{
+			name:     "unknown table error",
+			err:      fmt.Errorf("Unknown table expression identifier 'otel_logs'"),
+			expected: true,
+		},
+		{
+			name:     "unknown table lowercase",
+			err:      fmt.Errorf("unknown table 'my_table'"),
+			expected: true,
+		},
+		{
+			name:     "table doesn't exist",
+			err:      fmt.Errorf("Table 'otel_logs' doesn't exist"),
+			expected: true,
+		},
+		{
+			name:     "table doesn't exist lowercase",
+			err:      fmt.Errorf("table otel_logs doesn't exist in database"),
+			expected: true,
+		},
+		{
+			name:     "unrelated table word",
+			err:      fmt.Errorf("table format error"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isTableNotFoundError(tt.err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
