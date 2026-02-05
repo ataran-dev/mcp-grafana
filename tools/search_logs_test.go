@@ -3,6 +3,7 @@
 package tools
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -475,4 +476,55 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, 100, DefaultSearchLogsLimit)
 	assert.Equal(t, 1000, MaxSearchLogsLimit)
 	assert.Equal(t, "loki", LokiDatasourceType)
+}
+
+func TestIsTableNotFoundError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "generic error",
+			err:      fmt.Errorf("connection refused"),
+			expected: false,
+		},
+		{
+			name:     "unknown table error",
+			err:      fmt.Errorf("Unknown table expression identifier 'otel_logs'"),
+			expected: true,
+		},
+		{
+			name:     "unknown table lowercase",
+			err:      fmt.Errorf("unknown table 'my_table'"),
+			expected: true,
+		},
+		{
+			name:     "table doesn't exist",
+			err:      fmt.Errorf("Table 'otel_logs' doesn't exist"),
+			expected: true,
+		},
+		{
+			name:     "table doesn't exist lowercase",
+			err:      fmt.Errorf("table otel_logs doesn't exist in database"),
+			expected: true,
+		},
+		{
+			name:     "unrelated table word",
+			err:      fmt.Errorf("table format error"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isTableNotFoundError(tt.err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

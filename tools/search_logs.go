@@ -90,6 +90,16 @@ func escapeClickHousePattern(pattern string) string {
 	return pattern
 }
 
+// isTableNotFoundError checks if the error is related to a missing ClickHouse table
+func isTableNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "unknown table") ||
+		(strings.Contains(errStr, "table") && strings.Contains(errStr, "doesn't exist"))
+}
+
 // generateLokiQuery generates a LogQL query for the given pattern
 func generateLokiQuery(pattern string) string {
 	if isRegexPattern(pattern) {
@@ -197,6 +207,9 @@ func searchLogsInClickHouse(ctx context.Context, args SearchLogsParams, limit in
 		Limit:         limit,
 	})
 	if err != nil {
+		if isTableNotFoundError(err) {
+			return nil, fmt.Errorf("querying ClickHouse: %w. Hint: Use list_clickhouse_tables to discover available tables in your ClickHouse instance", err)
+		}
 		return nil, fmt.Errorf("querying ClickHouse: %w", err)
 	}
 
