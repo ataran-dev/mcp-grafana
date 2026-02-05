@@ -339,7 +339,7 @@ func executeLokiQuery(ctx context.Context, datasourceUID, query, start, end stri
 		return nil, fmt.Errorf("parsing end time: %w", err)
 	}
 
-	return queryLokiLogs(ctx, QueryLokiLogsParams{
+	result, err := queryLokiLogs(ctx, QueryLokiLogsParams{
 		DatasourceUID: datasourceUID,
 		LogQL:         query,
 		StartRFC3339:  startTime.Format("2006-01-02T15:04:05Z07:00"),
@@ -348,6 +348,10 @@ func executeLokiQuery(ctx context.Context, datasourceUID, query, start, end stri
 		Direction:     "backward",
 		QueryType:     "range",
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
 }
 
 // executeClickHouseQuery runs a ClickHouse query using the existing queryClickHouse function
